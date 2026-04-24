@@ -1,49 +1,45 @@
-"""
-Vercel serverless function — POST /api/contact
-Handles contact form submissions from the landing page.
-Sends lead notifications to the agent.
-"""
-
+from http.server import BaseHTTPRequestHandler
 import json
 import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
 import api.notify as notify
 
 
-def handler(request, response):
-    if request.method != 'POST':
-        response.status_code = 405
-        response.body = 'Method Not Allowed'
-        return
+class handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        length = int(self.headers.get('Content-Length', 0))
+        body   = self.rfile.read(length)
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            self._respond(400, {'error': 'Invalid JSON'})
+            return
 
-    try:
-        body = request.body
-        data = json.loads(body if isinstance(body, str) else body.decode())
-    except (json.JSONDecodeError, Exception):
-        response.status_code = 400
-        response.body = json.dumps({'error': 'Invalid JSON'})
-        return
+        lead = {
+            'name':    data.get('name', '').strip(),
+            'email':   data.get('email', '').strip(),
+            'phone':   data.get('phone', '').strip(),
+            'message': data.get('message', '').strip(),
+            'intent':  data.get('message', '').strip(),
+            'source':  'contact_form',
+        }
 
-    lead = {
-        'name':    data.get('name', '').strip(),
-        'email':   data.get('email', '').strip(),
-        'phone':   data.get('phone', '').strip(),
-        'message': data.get('message', '').strip(),
-        'intent':  data.get('message', '').strip(),
-        'source':  'contact_form',
-    }
+        if not lead['name'] or not lead['email']:
+            self._respond(400, {'error': 'name and email are required'})
+            return
 
-    if not lead['name'] or not lead['email']:
-        response.status_code = 400
-        response.headers['Content-Type'] = 'application/json'
-        response.body = json.dumps({'error': 'name and email are required'})
-        return
+        results = notify.notify_lead(lead)
+        self._respond(200, {'ok': True, 'notifications': results})
 
-    results = notify.notify_lead(lead)
+    def _respond(self, status, data):
+        body = json.dumps(data).encode()
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
-    response.status_code = 200
-    response.headers['Content-Type'] = 'application/json'
-    response.body = json.dumps({'ok': True, 'notifications': results})
+    def log_message(self, format, *args):
+        pass
