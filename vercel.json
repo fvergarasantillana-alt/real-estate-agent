@@ -1,11 +1,14 @@
 {
   "version": 2,
   "builds": [
-    { "src": "api/*.py", "use": "@vercel/python" },
+    { "src": "api/index.py",    "use": "@vercel/python" },
+    { "src": "api/listings.py", "use": "@vercel/python" },
+    { "src": "api/whatsapp.py", "use": "@vercel/python" },
+    { "src": "api/contact.py",  "use": "@vercel/python" },
     { "src": "tools/static/**", "use": "@vercel/static" }
   ],
   "routes": [
-    { "src": "/static/(.*)", "dest": "/tools/static/$1" },
+    { "src": "/static/(.*)",   "dest": "/tools/static/$1" },
     { "src": "/api/listings",  "dest": "/api/listings.py" },
     { "src": "/api/whatsapp",  "dest": "/api/whatsapp.py" },
     { "src": "/api/contact",   "dest": "/api/contact.py" },
