@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 app = Flask(__name__, static_folder='../public/static', static_url_path='/static')
 
-PUBLIC_DIR = Path(__file__).parent.parent / 'public'
+PUBLIC_DIR = Path(__file__).parent
 
 
 @app.route('/')
