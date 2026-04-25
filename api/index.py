@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory, Response
+from flask import Flask, request, jsonify, Response
 import json
 import os
 import sys
@@ -6,23 +6,34 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-app = Flask(__name__, static_folder='../public/static', static_url_path='/static')
+app = Flask(__name__)
 
 PUBLIC_DIR = Path(__file__).parent
 
 
 @app.route('/')
 def index():
+    from tools.copy import AGENT_NAME, AGENT_TITLE_EN, COPY
     wa_number = os.environ.get('AGENT_WHATSAPP_NUMBER', '')
     html = (PUBLIC_DIR / 'index.html').read_text(encoding='utf-8')
-    config_script = f'<script>window.AGENT_WA_NUMBER = "{wa_number}";</script>'
+    config_script = f'<script>window.AGENT_WA_NUMBER = "{wa_number}"; window.AGENT_NAME = "{AGENT_NAME}"; window.AGENT_TITLE_EN = "{AGENT_TITLE_EN}";</script>'
     html = html.replace('<script>', config_script + '\n<script>', 1)
     return Response(html, mimetype='text/html')
 
 
 @app.route('/api/config')
 def config():
-    return jsonify({'whatsapp_number': os.environ.get('AGENT_WHATSAPP_NUMBER', '')})
+    from tools.copy import AGENT_NAME, AGENT_TITLE_EN, AGENT_TITLE_ES, AGENT_BIO_EN, AGENT_BIO_ES, AGENT_AREAS_EN, AGENT_AREAS_ES
+    return jsonify({
+        'whatsapp_number': os.environ.get('AGENT_WHATSAPP_NUMBER', ''),
+        'agent_name':      AGENT_NAME,
+        'agent_title_en':  AGENT_TITLE_EN,
+        'agent_title_es':  AGENT_TITLE_ES,
+        'agent_bio_en':    AGENT_BIO_EN,
+        'agent_bio_es':    AGENT_BIO_ES,
+        'agent_areas_en':  AGENT_AREAS_EN,
+        'agent_areas_es':  AGENT_AREAS_ES,
+    })
 
 
 @app.route('/api/listings')
@@ -68,11 +79,11 @@ def contact():
     import api.notify as notify
     data = request.get_json(silent=True) or {}
     lead = {
-        'name':    data.get('name', '').strip(),
-        'email':   data.get('email', '').strip(),
-        'phone':   data.get('phone', '').strip(),
-        'intent':  data.get('message', '').strip(),
-        'source':  'contact_form',
+        'name':   data.get('name', '').strip(),
+        'email':  data.get('email', '').strip(),
+        'phone':  data.get('phone', '').strip(),
+        'intent': data.get('message', '').strip(),
+        'source': 'contact_form',
     }
     if not lead['name'] or not lead['email']:
         return jsonify({'error': 'name and email required'}), 400
@@ -94,21 +105,20 @@ def whatsapp():
     import api.notify as notify
     import httpx
 
-    body_bytes = request.get_data()
     data = request.get_json(silent=True) or {}
 
     try:
-        message   = data['entry'][0]['changes'][0]['value']['messages'][0]
+        message = data['entry'][0]['changes'][0]['value']['messages'][0]
     except (KeyError, IndexError):
         return Response('ok')
 
     if message.get('type') != 'text':
         return Response('ok')
 
-    wa_number     = message['from']
-    user_text     = message['text']['body']
-    result        = chat.reply(wa_number, user_text)
-    reply_text    = result.get('message', 'Sorry, something went wrong.')
+    wa_number  = message['from']
+    user_text  = message['text']['body']
+    result     = chat.reply(wa_number, user_text)
+    reply_text = result.get('message', 'Sorry, something went wrong.')
     lead_captured = result.get('lead_captured')
 
     token    = os.environ.get('META_WHATSAPP_TOKEN', '')
