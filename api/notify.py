@@ -18,7 +18,7 @@ from tools.copy import AGENT_NAME
 def _summary_line(lead: dict) -> str:
     parts = []
     name = lead.get('name', '')
-    intent_map = {'buy': 'wants to buy', 'sell': 'wants to sell', 'rent': 'wants to rent'}
+    intent_map = {'buy': 'quiere comprar', 'sell': 'quiere vender', 'rent': 'quiere rentar'}
     intent = intent_map.get(lead.get('intent', '').lower(), lead.get('intent', ''))
     prop = lead.get('property_type', '')
     location = lead.get('location', '')
@@ -30,15 +30,15 @@ def _summary_line(lead: dict) -> str:
     if intent:
         parts.append(intent)
     if prop and prop != 'unknown':
-        parts.append(f"a {prop}")
+        parts.append(f"una {prop}")
     if location and location != 'unknown':
-        parts.append(f"in {location}")
+        parts.append(f"en {location}")
     if budget and budget != 'unknown':
-        parts.append(f"budget {budget}")
+        parts.append(f"presupuesto {budget}")
     if timeline and timeline != 'unknown':
         parts.append(f"— {timeline}")
 
-    return ', '.join(parts) if parts else 'New lead'
+    return ', '.join(parts) if parts else 'Nuevo lead'
 
 
 def _row(label: str, value: str, alt: bool = False) -> str:
@@ -51,37 +51,37 @@ def _send_email(lead: dict) -> None:
     gmail_pass  = os.environ['GMAIL_APP_PASSWORD']
     agent_email = os.environ['AGENT_EMAIL']
 
-    name   = lead.get('name', 'Unknown')
-    intent = lead.get('intent', 'General inquiry')
-    subject = f"🏠 New Lead: {name} — {intent}"
+    name   = lead.get('name', 'Desconocido')
+    intent = lead.get('intent', 'Consulta general')
+    subject = f"🏠 Nuevo Lead: {name} — {intent}"
 
     listings_shown = lead.get('listings_shown', [])
     listings_html = ''
     if listings_shown:
         items = ''.join(f'<li>{a}</li>' for a in listings_shown)
-        listings_html = f'<p style="margin-top:16px;font-weight:bold;">Listings shown to client:</p><ul>{items}</ul>'
+        listings_html = f'<p style="margin-top:16px;font-weight:bold;">Propiedades mostradas al cliente:</p><ul>{items}</ul>'
 
     rows = ''.join([
-        _row('Name',          lead.get('name', '')),
-        _row('Email',         lead.get('email', ''),         alt=True),
-        _row('Phone',         lead.get('phone', '')),
-        _row('Intent',        lead.get('intent', ''),        alt=True),
-        _row('Property type', lead.get('property_type', '')),
-        _row('Location',      lead.get('location', ''),      alt=True),
-        _row('Budget',        lead.get('budget', '')),
-        _row('Timeline',      lead.get('timeline', ''),      alt=True),
-        _row('Notes',         lead.get('notes', lead.get('message', ''))),
-        _row('Source',        lead.get('source', ''),        alt=True),
+        _row('Nombre',             lead.get('name', '')),
+        _row('Email',              lead.get('email', ''),         alt=True),
+        _row('Teléfono',           lead.get('phone', '')),
+        _row('Intención',          lead.get('intent', ''),        alt=True),
+        _row('Tipo de propiedad',  lead.get('property_type', '')),
+        _row('Ubicación',          lead.get('location', ''),      alt=True),
+        _row('Presupuesto',        lead.get('budget', '')),
+        _row('Timeline',           lead.get('timeline', ''),      alt=True),
+        _row('Notas',              lead.get('notes', lead.get('message', ''))),
+        _row('Fuente',             lead.get('source', ''),        alt=True),
     ])
 
     html = f"""
-    <h2 style="color:#1a4f7a;">New Real Estate Lead</h2>
+    <h2 style="color:#1a4f7a;">Nuevo Lead de Bienes Raíces</h2>
     <p style="color:#374151;font-size:1rem;margin-bottom:16px;"><strong>{_summary_line(lead)}</strong></p>
     <table style="border-collapse:collapse;width:100%;max-width:520px;">
       {rows}
     </table>
     {listings_html}
-    <p style="margin-top:20px;color:#6b7280;font-size:0.85rem;">Sent by {AGENT_NAME}'s automated lead system.</p>
+    <p style="margin-top:20px;color:#6b7280;font-size:0.85rem;">Enviado por el sistema automático de leads de {AGENT_NAME}.</p>
     """
 
     msg = MIMEMultipart('alternative')
