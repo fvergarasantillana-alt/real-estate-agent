@@ -117,9 +117,10 @@ def whatsapp():
 
     wa_number  = message['from']
     user_text  = message['text']['body']
-    result     = chat.reply(wa_number, user_text)
-    reply_text = result.get('message', 'Sorry, something went wrong.')
+    result        = chat.reply(wa_number, user_text)
+    reply_text    = result.get('message', 'Sorry, something went wrong.')
     lead_captured = result.get('lead_captured')
+    handoff       = result.get('handoff', False)
 
     token    = os.environ.get('META_WHATSAPP_TOKEN', '')
     phone_id = os.environ.get('META_PHONE_NUMBER_ID', '')
@@ -131,7 +132,9 @@ def whatsapp():
             timeout=10,
         )
 
-    if lead_captured:
+    if handoff:
+        notify.notify_handoff(wa_number, user_text)
+    elif lead_captured:
         lead_captured['source'] = 'whatsapp_bot'
         lead_captured.setdefault('phone', f'+{wa_number}')
         notify.notify_lead(lead_captured)
