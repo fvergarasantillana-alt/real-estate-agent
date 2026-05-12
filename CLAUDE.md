@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # Agent Instructions
 
 You're working inside the **WAT framework** (Workflows, Agents, Tools). This architecture separates concerns so that probabilistic AI handles reasoning while deterministic code handles execution. That separation is what makes this system reliable.
@@ -57,14 +61,61 @@ This loop is how the framework improves over time.
 
 **Directory layout:**
 ```
-.tmp/           # Temporary files (scraped data, intermediate exports). Regenerated as needed.
+api/            # Flask app — all live endpoints and business logic
+  index.py      # Main Flask app + all routes (entry point for Vercel)
+  whatsapp.py   # Legacy serverless handler (not used in production)
+  claude_chat.py # Claude API conversation logic with prompt caching
+  notify.py     # Email (Gmail SMTP) + WhatsApp notifications to agent
+  listings.py   # Google Sheets integration for property listings
+  contact.py    # Contact form handler
 tools/          # Python scripts for deterministic execution
+  copy.py       # Agent name, bio, copy strings — driven by env vars
 workflows/      # Markdown SOPs defining what to do and how
+public/         # Static frontend files
+.tmp/           # Temporary files. Regenerated as needed.
 .env            # API keys and environment variables (NEVER store secrets anywhere else)
-credentials.json, token.json  # Google OAuth (gitignored)
+app.py          # Vercel entry point — just `from api.index import app`
+vercel.json     # Vercel build config — routes all traffic through app.py
 ```
 
 **Core principle:** Local files are just for processing. Anything I need to see or use lives in cloud services. Everything in `.tmp/` is disposable.
+
+## Live System: WhatsApp Lead Capture
+
+This repo runs a WhatsApp bot for real estate agents. The current deployment is for **Daniana Santillana** at `real-estate-agent-pink.vercel.app`.
+
+**Message flow:**
+1. User sends WhatsApp message → Meta Cloud API POSTs to `/api/whatsapp`
+2. `claude_chat.reply()` processes the message using Claude with conversation history in `/tmp/conversations/{wa_number}.json`
+3. Claude returns `{"message": str, "lead_captured": dict|null, "handoff": bool}`
+4. If `lead_captured`: `notify.notify_lead()` sends email + WhatsApp briefing to agent
+5. If `handoff`: `notify.notify_handoff()` alerts agent to respond directly
+
+**Key env vars** (all required in Vercel):
+- `ANTHROPIC_API_KEY` — Claude API
+- `META_WHATSAPP_TOKEN` — expires every 24h (temporary) until permanent token is set up
+- `META_PHONE_NUMBER_ID` — sandbox: `1136863569501979`
+- `META_VERIFY_TOKEN` — `my-verify-token-change-this`
+- `META_APP_SECRET` — for HMAC signature verification
+- `GMAIL_USER` / `GMAIL_APP_PASSWORD` — Gmail SMTP for email notifications
+- `AGENT_EMAIL` / `AGENT_WHATSAPP_NUMBER` — where to send lead notifications
+- `GOOGLE_SHEET_ID` / `GOOGLE_SERVICE_ACCOUNT_JSON` — listings data
+
+**Multi-client reuse:** All agent-specific content (name, bio, areas, copy) is driven by env vars in `tools/copy.py`. To deploy for a new agent, create a new Vercel project with different env vars — no code changes needed.
+
+**Listings:** Currently read from Google Sheets (`api/listings.py`). Cached 10 minutes. Columns: `address`, `price`, `bedrooms`, `bathrooms`, `sqft`, `type`, `zillow_url`, `image_url`, `description_en`, `description_es`.
+
+## Running locally
+
+```bash
+pip install -r requirements.txt
+python app.py  # starts Flask on localhost:5000
+```
+
+Test webhook verification:
+```bash
+curl "http://localhost:5000/api/whatsapp?hub.mode=subscribe&hub.verify_token=my-verify-token-change-this&hub.challenge=TEST"
+```
 
 ## Bottom Line
 
