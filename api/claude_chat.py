@@ -15,12 +15,59 @@ import anthropic
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from tools.copy import AGENT_NAME, AGENT_BIO_EN, AGENT_BIO_ES, AGENT_AREAS_EN, AGENT_AREAS_ES
-from api.listings import _get_listings
+from api.listings import _get_listings, search_listings
 
 CONVERSATIONS_DIR = Path('/tmp') / 'conversations'
 CONVERSATIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_HISTORY = 20
+
+
+_NEIGHBORHOODS = [
+    'Doral', 'Brickell', 'Coral Gables', 'Kendall', 'Hialeah', 'Homestead',
+    'Miami Beach', 'Aventura', 'Cutler Bay', 'Miramar', 'South Miami',
+    'Coconut Grove', 'Little Havana', 'Wynwood', 'Downtown Miami',
+    'North Miami', 'Miami Lakes', 'Sweetwater',
+]
+
+
+def _extract_criteria(history: list[dict], current_message: str) -> dict:
+    full = ' '.join(
+        m['content'] for m in history if isinstance(m.get('content'), str)
+    ) + ' ' + current_message
+
+    criteria = {}
+
+    if re.search(r'\b(buy|comprar|purchase)\b', full, re.I):
+        criteria['intent'] = 'buy'
+    elif re.search(r'\b(rent|rentar|alquil)\b', full, re.I):
+        criteria['intent'] = 'rent'
+
+    if re.search(r'\b(house|casa|single.family)\b', full, re.I):
+        criteria['property_type'] = 'house'
+    elif re.search(r'\b(condo|condominio|apartamento|apartment)\b', full, re.I):
+        criteria['property_type'] = 'condo'
+
+    bed = re.search(r'(\d)\s*(?:bed(?:room)?s?|br|cuartos?|habitaciones?)', full, re.I)
+    if bed:
+        criteria['bedrooms'] = int(bed.group(1))
+
+    bgt = re.search(r'\$?\s*(\d[\d,]*)\s*k\b', full, re.I)
+    if bgt:
+        criteria['budget_max'] = int(bgt.group(1).replace(',', '')) * 1000
+    else:
+        bgt = re.search(r'\$\s*(\d[\d,]+)', full)
+        if bgt:
+            criteria['budget_max'] = int(bgt.group(1).replace(',', ''))
+
+    for n in _NEIGHBORHOODS:
+        if re.search(rf'\b{re.escape(n)}\b', full, re.I):
+            criteria['location'] = f'{n}, FL'
+            break
+    if 'location' not in criteria and re.search(r'\bmiami\b', full, re.I):
+        criteria['location'] = 'Miami-Dade County, FL'
+
+    return criteria
 
 
 def _format_listings_for_prompt(listings: list[dict]) -> str:
@@ -102,7 +149,7 @@ Once you know intent, property_type, location, and budget — check these listin
 
 {listings_text}
 
-If you find matching listings (up to 3), present them conversationally:
+If you find matching listings (up to 5), present them conversationally:
 "Tengo [N] opciones que podrían interesarte: [list them with address, price, beds/baths]. ¿Cuál te llama más la atención?"
 
 If no listings match:
@@ -177,12 +224,15 @@ def reply(wa_number: str, user_message: str) -> dict:
     client  = anthropic.Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
     history = _load_history(wa_number)
 
+    criteria = _extract_criteria(history, user_message)
+    _has_criteria = len({'intent', 'location', 'budget_max', 'bedrooms'} & set(criteria.keys())) >= 2
+
     try:
-        listings = _get_listings()
+        listings = search_listings(criteria) if _has_criteria else _get_listings()
     except Exception:
         listings = []
 
-    listings_text   = _format_listings_for_prompt(listings)
+    listings_text = _format_listings_for_prompt(listings)
     system_prompt   = _build_system_prompt(listings_text)
 
     history.append({"role": "user", "content": user_message})

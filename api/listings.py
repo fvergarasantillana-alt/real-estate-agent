@@ -12,6 +12,71 @@ SCOPES   = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 SHEET_ID = os.environ.get('GOOGLE_SHEET_ID', '')
 RANGE    = 'Sheet1!A1:J200'
 
+RAPIDAPI_KEY  = os.environ.get('RAPIDAPI_KEY', '')
+RAPIDAPI_HOST = 'us-housing-market-data1.p.rapidapi.com'
+
+_HOME_TYPE_MAP = {
+    'house':      'Houses',
+    'condo':      'Condos',
+    'apartment':  'Apartments_Condos_Co-ops',
+    'commercial': 'MultiFamily',
+}
+
+
+def search_listings(criteria: dict) -> list[dict]:
+    if not RAPIDAPI_KEY:
+        return _get_listings()
+
+    params = {'location': criteria.get('location', 'Miami-Dade County, FL')}
+    params['status_type'] = 'ForRent' if criteria.get('intent', '').lower() == 'rent' else 'ForSale'
+
+    prop = criteria.get('property_type', '').lower()
+    if prop in _HOME_TYPE_MAP:
+        params['home_type'] = _HOME_TYPE_MAP[prop]
+    if criteria.get('budget_max'):
+        params['price_max'] = int(criteria['budget_max'])
+    if criteria.get('budget_min'):
+        params['price_min'] = int(criteria['budget_min'])
+    if criteria.get('bedrooms'):
+        params['beds_min'] = int(criteria['bedrooms'])
+
+    try:
+        import httpx
+        resp = httpx.get(
+            f'https://{RAPIDAPI_HOST}/propertyExtendedSearch',
+            params=params,
+            headers={'x-rapidapi-key': RAPIDAPI_KEY, 'x-rapidapi-host': RAPIDAPI_HOST},
+            timeout=8,
+        )
+        resp.raise_for_status()
+        props = resp.json().get('props', [])[:5]
+    except Exception:
+        return _get_listings()
+
+    results = []
+    for p in props:
+        price = str(p.get('price', ''))
+        try:
+            price = str(int(float(price.replace(',', ''))))
+        except (ValueError, TypeError):
+            pass
+        url = p.get('detailUrl', '')
+        if url and not url.startswith('http'):
+            url = 'https://www.zillow.com' + url
+        results.append({
+            'address':        p.get('address', ''),
+            'price':          price,
+            'bedrooms':       str(p.get('bedrooms', '')),
+            'bathrooms':      str(p.get('bathrooms', '')),
+            'sqft':           str(p.get('livingArea', '')),
+            'description_en': '',
+            'description_es': '',
+            'image_url':      p.get('imgSrc', ''),
+            'zillow_url':     url,
+        })
+
+    return results if results else _get_listings()
+
 
 def _get_listings():
     creds_json = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON', '')
